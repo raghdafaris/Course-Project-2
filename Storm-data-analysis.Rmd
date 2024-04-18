@@ -1,0 +1,247 @@
+---
+title: "Analysis of U.S. Storm Event Data and the Impact on Population Health and the Economy"
+author: "Raghda Altaei"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: cosmo
+    keep_md: no
+    df_print: paged
+  pdf_document:
+    toc: yes
+    df_print: kable
+    number_sections: false
+    fig_caption: yes
+    highlight: tango
+    dev: pdf
+  word_document:
+    toc: yes
+    df_print: paged
+    keep_md: no
+---
+
+## Course Project
+
+**Reproducible Research Course Project 2**
+
+Peer-graded Assignment
+
+* This course project is available on GitHub
+
+    <a href="https://github.com/oraclejavanet/reproducible-research-course-project-2" target="_top">Reproducible Research Course Project 2</a>
+
+## Synonpsis
+Storms and other extreme weather events have an impact on both population health and economic stability. This is examined in the analysis "Analysis of U.S. Storm Event Data and the Impact on Population Health and the Economy". The project starts with an overview that can be found on GitHub, highlighting how important it is to comprehend the effects of catastrophic weather events. In order to mitigate negative impacts, the analysis focuses on preventing fatalities, injuries, and property damage. The weather events with the biggest negative effects on population health and economic ramifications are identified based on estimates of crop destruction, property damage, fatalities, and injuries. The environment is configured to load necessary packages and specify knitr parameters, ensuring reproducibility. Data is retrieved and analyzed to reveal insights into negative effects and financial ramifications.
+
+###In short
+The estimates for fatalities and injuries were used to determine weather events
+with the most harmful impact to population health. Property damage and crop
+damage cost estimates were used to determine weather events with the
+greatest economic consequences.
+
+## Environment Setup
+
+```{r setup, include = FALSE}
+# set knitr options
+knitr::opts_chunk$set(echo = TRUE, fig.path='figures/')
+
+# clear global workspace (including hidden objects) for this session
+rm(list = ls(all.names = TRUE))
+
+# free up memory and display statistics on free memory
+gc()
+
+# disable scientific notation for numbers
+options(scipen = 1)
+```
+
+```{r}
+if (!require(ggplot2)) {
+    install.packages("ggplot2")
+    library(ggplot2)
+}
+
+if (!require(dplyr)) {
+    install.packages("dplyr")
+    library(dplyr, warn.conflicts = FALSE)
+}
+
+if (!require(xtable)) {
+    install.packages("xtable")
+    library(xtable, warn.conflicts = FALSE)
+}
+
+```
+
+```{r}
+sessionInfo()
+```
+
+```{r}
+stormDataFileURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+stormDataFile <- "storm-data.csv.bz2"
+if (!file.exists('data')) {
+  dir.create('data')
+}
+if (!file.exists(stormDataFile)) {
+  download.file(url = stormDataFileURL, destfile = stormDataFile)
+}
+
+data <- read.csv(stormDataFile, sep = ",", header = TRUE)
+stopifnot(file.size(stormDataFile) == 49177144) 
+stopifnot(dim(data) == c(902297,37))
+
+```
+# prossing data 
+
+### pull out the data for finding the harmful impact 
+```{r , echo = TRUE}
+harmfuldata <- data[, c("EVTYPE", "FATALITIES", "INJURIES")]
+```
+### pull out the data to find out the greatest economic consequences
+```{r , echo = TRUE}
+economicdata <- data[, c("EVTYPE", "PROPDMG","PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+```
+ 
+ An alphabetical character used to indicate magnitude and logs "K" for thousands, "M" for millions, and "B" for billions should be present in `PROPDMGEXP} and `CROPDMGEXP}. Nevertheless, a cursory examination of the data reveals that multiple additional characters are being recorded.
+
+### function to get multiplier factor
+
+```{r , echo = TRUE}
+getMultiplier <- function(exp) {
+  exp <- toupper(exp);
+  if (exp == "")  return (10^0);
+  if (exp == "-") return (10^0);
+  if (exp == "?") return (10^0);
+  if (exp == "+") return (10^0);
+  if (exp == "0") return (10^0);
+  if (exp == "1") return (10^1);
+  if (exp == "2") return (10^2);
+  if (exp == "3") return (10^3);
+  if (exp == "4") return (10^4);
+  if (exp == "5") return (10^5);
+  if (exp == "6") return (10^6);
+  if (exp == "7") return (10^7);
+  if (exp == "8") return (10^8);
+  if (exp == "9") return (10^9);
+  if (exp == "H") return (10^2);
+  if (exp == "K") return (10^3);
+  if (exp == "M") return (10^6);
+  if (exp == "B") return (10^9);
+  return (NA);
+}
+
+# calculate property damage and crop damage costs (in billions)
+economicdata$PROP_COST <- with(economicdata, as.numeric(PROPDMG) * sapply(PROPDMGEXP, getMultiplier))/10^9
+economicdata$CROP_COST <- with(economicdata, as.numeric(CROPDMG) * sapply(CROPDMGEXP, getMultiplier))/10^9
+```
+## Q1
+
+1. Across the United States, which types of events (as indicated in the EVTYPE EVTYPE variable)     are most harmful with respect to population health?
+
+### Summing up columns 2 and 3 (FATALITIES and INJURIES) based on the unique values in column 1 (EVTYPE)
+```{r , echo = TRUE}
+sum_by_EVTYPE <- aggregate(cbind(FATALITIES, INJURIES) ~ EVTYPE, harmfuldata, sum)
+```
+
+###  Remove rows where both FATALITIES and INJURIES are zeros
+```{r , echo = TRUE}
+data_filtered <- sum_by_EVTYPE[sum_by_EVTYPE[,2] != 0 | sum_by_EVTYPE[,3] != 0, ]
+```
+
+###  Summing up columns 2 and 3 (FATALITIES and INJURIES) and storing the result in a new column named 'harmful'
+```{r , echo = TRUE}
+data_filtered$harmful <- data_filtered[,2] + data_filtered[,3]
+```
+###  Set wider margins and rotate x-axis labels further
+```{r , echo = TRUE}
+par(mar = c(8, 4, 4, 2) + 0.1)
+
+# Create a bar plot
+barplot(data_filtered$harmful, 
+        names.arg = data_filtered$EVTYPE,
+        xlab = "", # Remove default x-axis label
+        ylab = "Harmful Impact",
+        main = "Harmful Impact by Event Type",
+        col = "skyblue",
+        border = "black",
+        las = 3, # Rotate labels vertically for better readability
+        cex.names = 0.5) # Adjust font size of names on x-axis
+```
+
+The resulted Plot contain a lot of data so it is better to take only the top 10 values and plot them again. 
+
+###  Sort the data frame by column 4 (harmful) in descending order
+```{r , echo = TRUE}
+sorted_data <- data_filtered[order(data_filtered$harmful, decreasing = TRUE), ]
+```
+###  Take the top 10 rows
+```{r , echo = TRUE}
+top_10 <- head(sorted_data, 10)
+
+# Plot the top 10 values
+barplot(top_10$harmful, 
+        names.arg = top_10$EVTYPE,
+        xlab = "",
+        ylab = "Harmful Impact",
+        main = "Top 10 Harmful Impacts by Event Type",
+        col = "skyblue",
+        border = "black",
+        las = 3, # Rotate labels vertically for better readability
+        cex.names = 0.8) # Adjust font size of names on x-axis
+```
+
+
+#Q2
+
+ 2. Across the United States, which types of events have the greatest economic consequences?
+
+
+### Summing up the PROP_COST and CROP_COST columns resulted from prossing the data above and storing the result in a new colum called Damage. 
+
+```{r , echo = TRUE}
+economicdata$Damage <- economicdata$PROP_COST + economicdata$CROP_COST
+```
+
+### Remove rows where the Damage value  equals 0
+```{r , echo = TRUE}
+economicdataFiltered <- economicdata[economicdata$Damage != 0, ]
+```
+
+### Summing up Damage values based on their corresponding EVTYPE names 
+```{r , echo = TRUE}
+sum_by_Damage <- aggregate( Damage ~ EVTYPE, data = economicdataFiltered, FUN = sum)
+```
+###  Sort the data frame by Damage values in descending order
+```{r, echo = TRUE}
+sorted_economicdata <- sum_by_Damage[order(sum_by_Damage$Damage, decreasing = TRUE), ]
+```
+###  Take the top 15 
+```{r load-packages, echo = TRUE}
+economicdata_top_15 <- head(sorted_economicdata, 15)
+
+# Plot the top 10 values
+barplot(economicdata_top_15$Damage, 
+        names.arg = economicdata_top_15$EVTYPE,
+        xlab = "",
+        ylab = "Economic Impact",
+        main = "Top 15 economic Impacts by Event Type",
+        col = "skyblue",
+        border = "black",
+        las = 3, # Rotate labels vertically for better readability
+        cex.names = 0.8) # Adjust font size of names on x-axis
+```
+## Results 
+
+The following conclusions can be made in light of the information presented in this analysis and backed by the data and graphs that are included:
+
+
+**Across the United States, which types of events (as indicated in the EVTYPE EVTYPE variable)     are most harmful with respect to population health?**
+    
+    The highest number of deaths and injuries are caused by tornadoes.
+    
+**Across the United States, which types of events have the greatest economic consequences?**
+    
+    The majority of crop destruction and property damage expenses are attributed to floods.
